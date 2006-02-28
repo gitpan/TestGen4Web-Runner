@@ -3,3 +3,4 @@ README
 MANIFEST
 lib/TestGen4Web/Runner.pm
 META.yml                                 Module meta-data (added by MakeMaker)
+Makefile.PL
