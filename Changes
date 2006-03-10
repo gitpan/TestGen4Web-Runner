@@ -1,5 +1,13 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.03	2006-03-09
+
+	Added requirement for Switch 2.10
+
+0.02	2006-02-28
+
+	Small bug fixes
+
 0.01	2006-02-23
 
 	First release.

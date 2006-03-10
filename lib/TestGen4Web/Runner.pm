@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 18 2006-02-23 15:53:46Z mackers $
+# $Id: Runner.pm 25 2006-03-09 15:02:43Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -59,7 +59,7 @@ use warnings;
 use Switch;
 
 use vars qw( $VERSION );
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
