@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 25 2006-03-09 15:02:43Z mackers $
+# $Id: Runner.pm 36 2006-03-20 16:03:10Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -59,7 +59,7 @@ use warnings;
 use Switch;
 
 use vars qw( $VERSION );
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -94,8 +94,18 @@ sub new
 	$self->{start_step} = -1;
 	$self->{end_step} = 9999;
 	$self->{replacements} = {};
-	
+
+	my $key; my $val;
+
+	while (($key = shift) && ($val = shift))
+	{
+		$self->{$key} = $val;
+	}
+
 	bless ($self, $class);
+
+	$self->_log_debug("TestGen4Web::Runner version $VERSION");
+	
 	return $self;
 }
 
@@ -112,6 +122,8 @@ sub load
 	my $self = shift;
 	my $actor_xml_file = shift;
 
+	$self->_log_debug("Loading actions from file '$actor_xml_file'");
+	
 	if (!($self->{actor} = $self->{xs}->XMLin($actor_xml_file, ForceArray => 0, KeyAttr => ['step'])))
 	{
 		$self->_log_error("Error loading XML file: $actor_xml_file");
@@ -146,6 +158,8 @@ sub run
 	my $start_step = (defined($_[0]) ? $_[0] : $self->{start_step});
 	my $end_step = (defined($_[1]) ? $_[1] : $self->{end_step});
 
+	$self->_log_debug("Running actions from step '$start_step' to '$end_step'");
+	
 	$self->{error} = "";
 	$self->{result} = -1;
 
@@ -309,7 +323,7 @@ sub end_step
 
 =item $runner->user_agent()
 
-Set/retrieve the C<LWP::UserAgent> object used internally by the Runner.
+Retrieve the C<LWP::UserAgent> object used internally by the Runner.
 
 =cut
 
@@ -318,16 +332,27 @@ sub user_agent
 	return $_[0]->{ua};
 }
 
-=item $runner->cookie_jar()
+=item $runner->cookie_jar_file()
 
 Set/retrieve the full filename of the cookie jar as used internally by the
 C<LWP::UserAgent> performing the actions.
 
 =cut
 
-sub cookie_jar
+sub cookie_jar_file
 {
 	defined($_[1]) ? $_[0]->{cookie_jar_file} = $_[1] : $_[0]->{cookie_jar_file};
+}
+
+=item $runner->cookie_jar()
+
+Set/retrieve the C<HTTP::Cookies> cookie jar object used by the module.
+
+=cut
+
+sub cookie_jar
+{
+	defined($_[1]) ? $_[0]->{cookie_jar} = $_[1] : $_[0]->{cookie_jar};
 }
 
 =item $runner->action_state()
@@ -389,9 +414,52 @@ sub _action_sink
 		case 'fill'
 		{
 			# poor man's xpath
-			if ($xpath =~ m/\*\/FORM\[(\d+)\]\/\*\/(INPUT|TEXTAREA)\[.*?\@(ID|NAME)="(.*?)".*?\]/)
+			if ($xpath =~ m/\*\/FORM\[(.*?)\]\/(\*\/)?(INPUT|TEXTAREA)\[(.*?)]/)
 			{
-				$self->{filldata}[$1]->{$4} = $value;
+				my $formxpath = $1;
+				my $formnum = 0;
+				my $inputxpath = $4;
+				my $inputname = "";
+
+				if ($formxpath =~ m/\@NAME="(.*?)"/)
+				{
+					$formnum = $self->_get_form_position($step, $1);
+
+					if ($formnum == -1)
+					{
+						return 0;
+					}
+				}
+				elsif ($formxpath =~ m/\d+/)
+				{
+					$formnum = $formxpath;
+				}
+				else
+				{
+					$self->{error} = "Could not parse xpath expression \"$xpath\", form \"$formxpath\"";
+					$self->_log_error("STEP$step: " . $self->{error});
+					return 0;
+				}
+				
+				if ($inputxpath =~ m/\@(ID|NAME)="(.*?)"/)
+				{
+					$inputname = $2;
+				}
+				elsif ($inputxpath =~ m/\d+/)
+				{
+					if (!($inputname = $self->_get_input_name($step, $formnum, $inputxpath)))
+					{
+						return 0;
+					}
+				}
+				else
+				{
+					$self->{error} = "Could not parse xpath expression \"$xpath\", input \"$inputxpath\"";
+					$self->_log_error("STEP$step: " . $self->{error});
+					return 0;
+				}
+
+				$self->{filldata}[$formnum]->{$inputname} = $value;
 
 				return 1;
 			}
@@ -407,6 +475,7 @@ sub _action_sink
 		{
 			if ($value > 0)
 			{
+				$self->_log_error("STEP$step: sleeping for $value seconds...");
 				sleep($value);
 
 				return 1;
@@ -433,15 +502,34 @@ sub _action_sink
 					return 0;
 				}
 			}
+
+			my $retval;
 	
 			# poor man's xpath
 			if ($xpath =~ m/\*\/A\[\@CDATA="(.*?)"\]/)
 			{
-				return $self->_goto_link($step, $1);
+				$retval = $self->_goto_link($step, $1);
 			}
-			elsif ($xpath =~ m/\*\/FORM\[(\d+)\]\//)
+			elsif ($xpath =~ m/\*\/FORM\[(.*?)\]\//)
 			{
-				return $self->_submit_form($step, $1);
+				my $formname = $1;
+				my $formnum = 0;
+
+				if ($formname =~ m/\@NAME="(.*?)"/)
+				{
+					$formnum = $self->_get_form_position($step, $1);
+
+					if ($formnum == -1)
+					{
+						return 0;
+					}
+				}
+				elsif ($formname =~ m/\d+/)
+				{
+					$formnum = $formname;
+				}
+
+				$retval = $self->_submit_form($step, $formnum);
 			}
 			else
 			{
@@ -451,8 +539,18 @@ sub _action_sink
 				return 0;
 			}
 
-
-			return 1;
+			if (!$retval)
+			{
+				return 0;
+			}
+			elsif ($refresh eq "true")
+			{
+				return $self->_refresh($step);
+			}
+			else
+			{
+				return 1;
+			}
 		}
 		case 'verify-title'
 		{
@@ -692,11 +790,82 @@ sub _goto_frame
 	return 0;
 }
 
+sub _get_input_name
+{
+	my ($self, $step, $thisform, $inputnum) = @_;
+
+	my @matches;
+
+	if (!(@matches = ($self->{action_state}->as_string() =~ m/<form.*?>.*?<\/form>/gism)))
+	{
+		$self->{error} = "Unexpected failure in step $step (subtype fill_form); the document has no forms";
+		$self->_log_error("STEP$step: " . $self->{error});
+
+		return "";
+	}
+
+	if (!$matches[($thisform-1)])
+	{
+		$self->{error} = "Unexpected failure in step $step (subtype fill_form); form $thisform not found";
+		$self->_log_error("STEP$step: " . $self->{error});
+
+		return "";
+	}
+	
+	my @inputs = ($matches[$thisform-1] =~ m/<(input|textarea).*?name=["']?(.*?)["'>\s]/gism);
+	my $name = "";
+
+	if (!($name = $inputs[($inputnum*2)-1]))
+	{
+		$self->{error} = "Unexpected failure in step $step (subtype fill_form); input $inputnum in form $thisform not found";
+		$self->_log_error("STEP$step: " . $self->{error});
+		
+		return "";
+	}
+
+	return $name;
+}
+
+sub _get_form_position
+{
+	my ($self, $step, $formname) = @_;
+
+	my @matches;
+
+	if (!(@matches = ($self->{action_state}->as_string() =~ m/<form.*?>/gism)))
+	{
+		$self->{error} = "Unexpected failure in step $step (subtype submit_form); the document has no forms";
+		$self->_log_error("STEP$step: " . $self->{error});
+
+		return -1;
+	}
+
+	for (my $i=0; $i<scalar(@matches); $i++)
+	{
+		if ($matches[$i] =~ m/(name|id)=['"]?$formname/ism)
+		{
+			return $i + 1;
+		}
+	}
+
+	$self->{error} = "Unexpected failure in step $step (subtype submit_form); can't find the form '$formname'";
+	$self->_log_error("STEP$step: " . $self->{error});
+
+	return -1;
+}
+
 sub _submit_form
 {
 	my ($self, $step, $thisform) = @_;
 	my @matches;
 
+	if ($thisform =~ m/\D/)
+	{
+		$thisform = $self->_get_form_position($step, $thisform);
+
+		return 0 if ($thisform == -1);
+	}
+	
 	if (!(@matches = ($self->{action_state}->as_string() =~ m/<form.*?>.*?<\/form>/gism)))
 	{
 		$self->{error} = "Refresh failed in step $step (subtype submit_form); the document has no forms";
@@ -758,9 +927,15 @@ sub _submit_form
 			$req->push_header("Content-Length" => length($query_string));
 			$req->content($query_string);
 		}
-		else
+		elsif ($method eq 'GET')
 		{
 			$action .= '?' . $query_string;
+		}
+		else
+		{
+			$self->{error} = "Unsupported form method: '$method' in form tag '$formtag'"; 
+			$self->_log_error("STEP$step: " . $self->{error});
+			return 0;
 		}
 
 		$req->uri($action);
@@ -775,18 +950,17 @@ sub _submit_form
 
 		$self->_log_debug("fetched url in " . (time() - $now) . " seconds with result \"" . $resp->status_line . "\"");
 
+		$self->{cookie_jar}->extract_cookies($resp);
+		$self->{action_state} = $resp;
+		$self->{filldata} = [];
+		$self->{last_frame} = "";
+		$self->_log_action_state();
+
 		if ($resp->is_error())
 		{
 			$self->{error} = "Action failed in step $step (subtype submit_form): " . $resp->status_line; 
 			return 0;
 		}
-
-		$self->{cookie_jar}->extract_cookies($resp);
-		$self->{action_state} = $resp;
-		$self->{filldata} = [];
-		$self->{last_frame} = "";
-
-		$self->_log_action_state();
 
 		return 1;
 	}

@@ -1,5 +1,12 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.04	2006-03-20
+
+	Support for named forms and numbered inputs in xpaths.
+	Supporting refreshes on form submits.
+	New cookie_jar() accessor. Renamed cookie_jar_file() accessor.
+	Bug fix: failing if missing 'method' on form.
+
 0.03	2006-03-09
 
 	Added requirement for Switch 2.10
