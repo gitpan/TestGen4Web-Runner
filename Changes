@@ -1,5 +1,10 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.05	2006-05-02
+
+	Adding x and y to submits
+	Support for @HREF attrib in a tag clicks.
+
 0.04	2006-03-20
 
 	Support for named forms and numbered inputs in xpaths.

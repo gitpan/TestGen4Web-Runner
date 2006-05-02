@@ -3,6 +3,8 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME		=> 'TestGen4Web::Runner',
 	VERSION_FROM	=> 'lib/TestGen4Web/Runner.pm',
+	AUTHOR		=> 'mackers',
+	ABSTRACT	=> 'A module to replay files recorded with TestGen4Web',
 	PREREQ_PM	=> {
 		Switch			=> 2.10,
 		XML::Simple		=> 0,

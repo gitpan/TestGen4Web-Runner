@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 36 2006-03-20 16:03:10Z mackers $
+# $Id: Runner.pm 44 2006-05-02 17:41:39Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -59,13 +59,14 @@ use warnings;
 use Switch;
 
 use vars qw( $VERSION );
-$VERSION = '0.04';
+$VERSION = '0.05';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
 use LWP::UserAgent;
 use HTTP::Cookies;
 use URI::Escape;
+use URI 1.26;
 
 1;
 
@@ -475,7 +476,7 @@ sub _action_sink
 		{
 			if ($value > 0)
 			{
-				$self->_log_error("STEP$step: sleeping for $value seconds...");
+				$self->_log_debug("STEP$step: sleeping for $value seconds...");
 				sleep($value);
 
 				return 1;
@@ -509,6 +510,10 @@ sub _action_sink
 			if ($xpath =~ m/\*\/A\[\@CDATA="(.*?)"\]/)
 			{
 				$retval = $self->_goto_link($step, $1);
+			}
+			elsif ($xpath =~ m/\*\/A\[\@HREF="(.*?)"\]/)
+			{
+				$retval = $self->_goto_link($step, undef, $1);
 			}
 			elsif ($xpath =~ m/\*\/FORM\[(.*?)\]\//)
 			{
@@ -567,7 +572,7 @@ sub _action_sink
 					return 1;
 				}
 
-				if ($self->{action_state}->as_string() =~ m/<title>(.*?)<\/title>/ism)
+				if (($self->{action_state}->as_string() =~ m/<title>(.*?)<\/title>/ism) && (defined($1)))
 				{
 					$doctitle = $1;
 				}
@@ -724,7 +729,7 @@ sub _goto
 
 sub _goto_link
 {
-	my ($self, $step, $linktext) = @_;
+	my ($self, $step, $linktext, $href) = @_;
 
 	if (!defined($self->{action_state}))
 	{
@@ -735,7 +740,7 @@ sub _goto_link
 	}
 	
 	# images in links seem to get the text 'null'
-	$linktext =~ s/null//g;
+	defined($linktext) && ($linktext =~ s/null//g);
 
 	my @links = ($self->{action_state}->as_string() =~ m/<a.*?>.*?<\/a>/gism);
 
@@ -743,10 +748,11 @@ sub _goto_link
 
 	foreach my $link (@links)
 	{
-		if ($link =~ m/href=["'](.*?)["'>].*?$linktext/ism)
+		if (	(defined($linktext) && ($link =~ m/href=["'](.*?)["'>].*?$linktext/ism)) ||
+			(defined($href) && ($link =~ m/href=["'](.*?$href.*?)["'>]/ism)))
 		{
 			my $link = $self->_make_absolute_url($1);
-			$self->_log_debug("STEP$step: found link containing \"$linktext\": $link");
+			$self->_log_debug("STEP$step: found link" . (defined($linktext)?" containing \"$linktext\"":"") . ": $link");
 
 			$self->{last_frame} = "";
 
@@ -900,11 +906,13 @@ sub _submit_form
 		{
 			my $name = "";
 			my $value = "";
+			#my $type = "";
 
 			($input =~ m/name=["']?(.*?)["' >]/i) && ($name = $1);
 			($input =~ m/value=["']?(.*?)["' >]/i) && ($value = $1);
+			#($input =~ m/type=["']?(.*?)["' >]/i) && ($type = $1);
 
-			if ($name eq "")
+			if ($name eq "") # || $type eq "image" || $type eq "submit")
 			{
 				next;
 			}
@@ -920,6 +928,8 @@ sub _submit_form
 
 			$query_string .= '&';
 		}
+
+		$query_string .= "x=1&y=1";
 
 		if ($method eq 'POST')
 		{
