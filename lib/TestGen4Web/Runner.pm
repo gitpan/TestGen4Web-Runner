@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 44 2006-05-02 17:41:39Z mackers $
+# $Id: Runner.pm 46 2006-05-23 14:33:43Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -56,10 +56,9 @@ The following methods are available:
 
 use strict;
 use warnings;
-use Switch;
 
 use vars qw( $VERSION );
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -393,6 +392,17 @@ sub debug
 	defined($_[1]) ? $_[0]->{debug} = $_[1] : $_[0]->{debug};
 }
 
+=item $runner->version()
+
+Retrieve the version of this module.
+
+=cut
+
+sub version
+{
+	return $VERSION;
+}
+
 # private methods
 
 sub _action_sink
@@ -406,244 +416,241 @@ sub _action_sink
 
 	$value =~ s/{(\w+?)}/$self->{replacements}{$1}/ge;
 
-	switch ($type)
+	if ($type eq 'goto')
 	{
-		case 'goto'
+		return $self->_goto($step, $value);
+	}
+	elsif ($type eq 'fill')
+	{
+		# poor man's xpath
+		if ($xpath =~ m/\*\/FORM\[(.*?)\]\/(\*\/)?(INPUT|TEXTAREA)\[(.*?)]/)
 		{
-			return $self->_goto($step, $value);
-		}
-		case 'fill'
-		{
-			# poor man's xpath
-			if ($xpath =~ m/\*\/FORM\[(.*?)\]\/(\*\/)?(INPUT|TEXTAREA)\[(.*?)]/)
+			my $formxpath = $1;
+			my $formnum = 0;
+			my $inputxpath = $4;
+			my $inputname = "";
+
+			if ($formxpath =~ m/\@NAME="(.*?)"/)
 			{
-				my $formxpath = $1;
-				my $formnum = 0;
-				my $inputxpath = $4;
-				my $inputname = "";
+				$formnum = $self->_get_form_position($step, $1);
 
-				if ($formxpath =~ m/\@NAME="(.*?)"/)
+				if ($formnum == -1)
 				{
-					$formnum = $self->_get_form_position($step, $1);
-
-					if ($formnum == -1)
-					{
-						return 0;
-					}
-				}
-				elsif ($formxpath =~ m/\d+/)
-				{
-					$formnum = $formxpath;
-				}
-				else
-				{
-					$self->{error} = "Could not parse xpath expression \"$xpath\", form \"$formxpath\"";
-					$self->_log_error("STEP$step: " . $self->{error});
 					return 0;
 				}
-				
-				if ($inputxpath =~ m/\@(ID|NAME)="(.*?)"/)
-				{
-					$inputname = $2;
-				}
-				elsif ($inputxpath =~ m/\d+/)
-				{
-					if (!($inputname = $self->_get_input_name($step, $formnum, $inputxpath)))
-					{
-						return 0;
-					}
-				}
-				else
-				{
-					$self->{error} = "Could not parse xpath expression \"$xpath\", input \"$inputxpath\"";
-					$self->_log_error("STEP$step: " . $self->{error});
-					return 0;
-				}
-
-				$self->{filldata}[$formnum]->{$inputname} = $value;
-
-				return 1;
+			}
+			elsif ($formxpath =~ m/\d+/)
+			{
+				$formnum = $formxpath;
 			}
 			else
 			{
-				$self->{error} = "Could not parse xpath expression \"$xpath\"";
+				$self->{error} = "Could not parse xpath expression \"$xpath\", form \"$formxpath\"";
+				$self->_log_error("STEP$step: " . $self->{error});
+				return 0;
+			}
+			
+			if ($inputxpath =~ m/\@(ID|NAME)="(.*?)"/)
+			{
+				$inputname = $2;
+			}
+			elsif ($inputxpath =~ m/\d+/)
+			{
+				if (!($inputname = $self->_get_input_name($step, $formnum, $inputxpath)))
+				{
+					return 0;
+				}
+			}
+			else
+			{
+				$self->{error} = "Could not parse xpath expression \"$xpath\", input \"$inputxpath\"";
+				$self->_log_error("STEP$step: " . $self->{error});
+				return 0;
+			}
+
+			$self->{filldata}[$formnum]->{$inputname} = $value;
+
+			return 1;
+		}
+		else
+		{
+			$self->{error} = "Could not parse xpath expression \"$xpath\"";
+			$self->_log_error("STEP$step: " . $self->{error});
+
+			return 0;
+		}
+	}
+	elsif ($type eq 'wait')
+	{
+		if ($value > 0)
+		{
+			$self->_log_debug("STEP$step: sleeping for $value seconds...");
+			sleep($value);
+
+			return 1;
+		}
+		else
+		{
+			$self->{error} = "Could not parse wait value \"$value\"";
+			$self->_log_error("STEP$step: " . $self->{error});
+
+			return 0;
+		}
+	}
+	elsif ($type eq 'click')
+	{
+		if (defined($frame) && ($self->{last_frame} ne $frame))
+		{
+			$self->_log_debug("STEP$step: going to search for frame \"$frame\"");
+
+			if (!($self->_goto_frame($step, $frame)))
+			{
+				$self->{error} = "Frame not found \"frame\" in step $step";
 				$self->_log_error("STEP$step: " . $self->{error});
 
 				return 0;
 			}
 		}
-		case 'wait'
+
+		my $retval;
+
+		# poor man's xpath
+		if ($xpath =~ m/\*\/A\[\@CDATA="(.*?)"\]/)
 		{
-			if ($value > 0)
-			{
-				$self->_log_debug("STEP$step: sleeping for $value seconds...");
-				sleep($value);
-
-				return 1;
-			}
-			else
-			{
-				$self->{error} = "Could not parse wait value \"$value\"";
-				$self->_log_error("STEP$step: " . $self->{error});
-
-				return 0;
-			}
+			$retval = $self->_goto_link($step, $1);
 		}
-		case 'click'
+		elsif ($xpath =~ m/\*\/A\[\@HREF="(.*?)"\]/)
 		{
-			if (defined($frame) && ($self->{last_frame} ne $frame))
+			$retval = $self->_goto_link($step, undef, $1);
+		}
+		elsif ($xpath =~ m/\*\/FORM\[(.*?)\]\//)
+		{
+			my $formname = $1;
+			my $formnum = 0;
+
+			if ($formname =~ m/\@NAME="(.*?)"/)
 			{
-				$self->_log_debug("STEP$step: going to search for frame \"$frame\"");
+				$formnum = $self->_get_form_position($step, $1);
 
-				if (!($self->_goto_frame($step, $frame)))
+				if ($formnum == -1)
 				{
-					$self->{error} = "Frame not found \"frame\" in step $step";
-					$self->_log_error("STEP$step: " . $self->{error});
-
 					return 0;
 				}
 			}
-
-			my $retval;
-	
-			# poor man's xpath
-			if ($xpath =~ m/\*\/A\[\@CDATA="(.*?)"\]/)
+			elsif ($formname =~ m/\d+/)
 			{
-				$retval = $self->_goto_link($step, $1);
-			}
-			elsif ($xpath =~ m/\*\/A\[\@HREF="(.*?)"\]/)
-			{
-				$retval = $self->_goto_link($step, undef, $1);
-			}
-			elsif ($xpath =~ m/\*\/FORM\[(.*?)\]\//)
-			{
-				my $formname = $1;
-				my $formnum = 0;
-
-				if ($formname =~ m/\@NAME="(.*?)"/)
-				{
-					$formnum = $self->_get_form_position($step, $1);
-
-					if ($formnum == -1)
-					{
-						return 0;
-					}
-				}
-				elsif ($formname =~ m/\d+/)
-				{
-					$formnum = $formname;
-				}
-
-				$retval = $self->_submit_form($step, $formnum);
-			}
-			else
-			{
-				$self->{error} = "Could not parse xpath expression \"$xpath\"";
-				$self->_log_error("STEP$step: " . $self->{error});
-
-				return 0;
+				$formnum = $formname;
 			}
 
-			if (!$retval)
-			{
-				return 0;
-			}
-			elsif ($refresh eq "true")
-			{
-				return $self->_refresh($step);
-			}
-			else
-			{
-				return 1;
-			}
+			$retval = $self->_submit_form($step, $formnum);
 		}
-		case 'verify-title'
+		else
 		{
-			$self->{matches} = [];
+			$self->{error} = "Could not parse xpath expression \"$xpath\"";
+			$self->_log_error("STEP$step: " . $self->{error});
 
-			if ($self->{verify_titles})
-			{
-				my $doctitle;
-
-				if (!$self->{action_state})
-				{
-					$self->_log_warn("STEP$step: skipping $type action; no previous request");
-
-					return 1;
-				}
-
-				if (($self->{action_state}->as_string() =~ m/<title>(.*?)<\/title>/ism) && (defined($1)))
-				{
-					$doctitle = $1;
-				}
-				else
-				{
-					$self->{error} = "Assertion failed in step $step ($type): document has no title";
-					$self->_log_error("STEP$step: " . $self->{error});
-
-					return 0;
-				}
-
-				$doctitle =~ s/\W//gsm;
-				$value =~ s/\W//gsm;
-
-				#if ($self->{action_state}->as_string() =~ m/<title>\s*$value\s*<\/title>/ism)
-				if ($doctitle =~ m/$value/sm)
-				{
-					$self->_log_debug("title match for \"$value\" in last response");
-
-					$self->{matches} = [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9];
-				}
-				else
-				{
-					$self->_log_debug("no title match for \"$value\" in last response");
-					$self->{error} = "Assertion failed in step $step ($type): no match for \"$value\""; 
-
-					return 0;
-				}
-			}
-
-			if ($refresh eq "true")
-			{
-				return $self->_refresh($step);
-			}
-			else
-			{
-				return 1;
-			}
+			return 0;
 		}
-		case 'assert-text-exists'
+
+		if (!$retval)
 		{
-			$self->{matches} = [];
+			return 0;
+		}
+		elsif ($refresh eq "true")
+		{
+			return $self->_refresh($step);
+		}
+		else
+		{
+			return 1;
+		}
+	}
+	elsif ($type eq 'verify-title')
+	{
+		$self->{matches} = [];
+
+		if ($self->{verify_titles})
+		{
+			my $doctitle;
 
 			if (!$self->{action_state})
 			{
 				$self->_log_warn("STEP$step: skipping $type action; no previous request");
+
 				return 1;
 			}
 
-			if ($self->{action_state}->as_string() =~ m/$value/ism)
+			if (($self->{action_state}->as_string() =~ m/<title>(.*?)<\/title>/ism) && (defined($1)))
 			{
-				$self->_log_debug("text match for \"$value\" in last response");
-
-				$self->{matches} = [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9];
-
-				return 1;
+				$doctitle = $1;
 			}
 			else
 			{
-				$self->_log_debug("no text match for \"$value\" in last response");
+				$self->{error} = "Assertion failed in step $step ($type): document has no title";
+				$self->_log_error("STEP$step: " . $self->{error});
+
+				return 0;
+			}
+
+			$doctitle =~ s/\W//gsm;
+			$value =~ s/\W//gsm;
+
+			#if ($self->{action_state}->as_string() =~ m/<title>\s*$value\s*<\/title>/ism)
+			if ($doctitle =~ m/$value/sm)
+			{
+				$self->_log_debug("title match for \"$value\" in last response");
+
+				$self->{matches} = [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9];
+			}
+			else
+			{
+				$self->_log_debug("no title match for \"$value\" in last response");
 				$self->{error} = "Assertion failed in step $step ($type): no match for \"$value\""; 
 
 				return 0;
 			}
 		}
+
+		if ($refresh eq "true")
+		{
+			return $self->_refresh($step);
+		}
 		else
 		{
-			$self->{error} = "Unsupported action: $type";
-			$self->_log_error("STEP$step: " . $self->{error});
+			return 1;
+		}
+	}
+	elsif ($type eq 'assert-text-exists')
+	{
+		$self->{matches} = [];
+
+		if (!$self->{action_state})
+		{
+			$self->_log_warn("STEP$step: skipping $type action; no previous request");
+			return 1;
+		}
+
+		if ($self->{action_state}->as_string() =~ m/$value/ism)
+		{
+			$self->_log_debug("text match for \"$value\" in last response");
+
+			$self->{matches} = [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9];
+
+			return 1;
+		}
+		else
+		{
+			$self->_log_debug("no text match for \"$value\" in last response");
+			$self->{error} = "Assertion failed in step $step ($type): no match for \"$value\""; 
+
 			return 0;
 		}
+	}
+	else
+	{
+		$self->{error} = "Unsupported action: $type";
+		$self->_log_error("STEP$step: " . $self->{error});
+		return 0;
 	}
 
 	return 0;

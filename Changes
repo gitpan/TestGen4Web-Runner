@@ -1,5 +1,9 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.06	2006-05-23
+
+	Replaced switch statment with ifs
+
 0.05	2006-05-02
 
 	Adding x and y to submits
