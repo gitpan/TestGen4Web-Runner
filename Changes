@@ -1,5 +1,10 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.07	2006-05-25
+
+	Ignoring HTML comments during xpath parse.
+	Disabled LWP::UserAgent automatic redirects.
+
 0.06	2006-05-23
 
 	Replaced switch statment with ifs

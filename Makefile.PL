@@ -6,7 +6,6 @@ WriteMakefile(
 	AUTHOR		=> 'mackers',
 	ABSTRACT	=> 'A module to replay files recorded with TestGen4Web',
 	PREREQ_PM	=> {
-		Switch			=> 2.10,
 		XML::Simple		=> 0,
 		LWP::UserAgent		=> 0,
 		HTTP::Cookies		=> 0,

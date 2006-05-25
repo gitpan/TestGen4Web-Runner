@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 46 2006-05-23 14:33:43Z mackers $
+# $Id: Runner.pm 49 2006-05-25 13:59:07Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -58,7 +58,7 @@ use strict;
 use warnings;
 
 use vars qw( $VERSION );
-$VERSION = '0.06';
+$VERSION = '0.07';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -81,7 +81,7 @@ sub new
 	my $self = {};
 
 	$self->{xs} = new XML::Simple();
-	$self->{ua} = LWP::UserAgent->new();
+	$self->{ua} = LWP::UserAgent->new(max_redirect => 0);
 	$self->{cookie_jar} = HTTP::Cookies->new(ignore_discard => 1);
 
 	$self->{ua}->agent("Mozilla/5.0 (Macintosh; U; PPC Mac OS X Mach-O; en-US; rv:1.8) Gecko/20051112 Firefox/1.5");
@@ -708,11 +708,15 @@ sub _goto
 	$req->method("GET");
 	$req->protocol("HTTP/1.0");
 	$self->{cookie_jar}->add_cookie_header($req);
+
+#$self->_log_debug("CJLOOKY: \n" . $self->{cookie_jar}->as_string());
+#$self->_log_debug("REQLOOKY: \n" . $req->as_string());
 	
 	my $now = time();
 	$self->_log_debug("about to fetch \"$uri\"");
 
 	my $resp = $self->{ua}->request($req);
+
 	$self->_log_debug("fetched url in " . (time() - $now) . " seconds with result \"" . $resp->status_line . "\"");
 
 	if ($resp->is_error())
@@ -878,8 +882,12 @@ sub _submit_form
 
 		return 0 if ($thisform == -1);
 	}
+
+	my $html = $self->{action_state}->as_string();
+
+	$html =~ s/<!--.*?-->//gsm;
 	
-	if (!(@matches = ($self->{action_state}->as_string() =~ m/<form.*?>.*?<\/form>/gism)))
+	if (!(@matches = ($html =~ m/<form.*?>.*?<\/form>/gism)))
 	{
 		$self->{error} = "Refresh failed in step $step (subtype submit_form); the document has no forms";
 		$self->_log_error("STEP$step: " . $self->{error});
@@ -909,6 +917,8 @@ sub _submit_form
 
 		$action = $self->_make_absolute_url($action);
 
+#$self->_log_debug("11111111 $formbody 11111111");
+
 		foreach my $input ($formbody =~ m/(<(input|textarea).*?>)/gism)
 		{
 			my $name = "";
@@ -918,6 +928,8 @@ sub _submit_form
 			($input =~ m/name=["']?(.*?)["' >]/i) && ($name = $1);
 			($input =~ m/value=["']?(.*?)["' >]/i) && ($value = $1);
 			#($input =~ m/type=["']?(.*?)["' >]/i) && ($type = $1);
+
+#$self->_log_debug("Found input $name");
 
 			if ($name eq "") # || $type eq "image" || $type eq "submit")
 			{
