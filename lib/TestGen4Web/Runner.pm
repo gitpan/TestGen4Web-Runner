@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 49 2006-05-25 13:59:07Z mackers $
+# $Id: Runner.pm 52 2006-07-18 20:54:17Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -58,7 +58,7 @@ use strict;
 use warnings;
 
 use vars qw( $VERSION );
-$VERSION = '0.07';
+$VERSION = '0.08';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -456,7 +456,8 @@ sub _action_sink
 			}
 			elsif ($inputxpath =~ m/\d+/)
 			{
-				if (!($inputname = $self->_get_input_name($step, $formnum, $inputxpath)))
+				if (!($inputname = $self->_get_input_name($step,
+							$formnum, int($inputxpath)+1)))
 				{
 					return 0;
 				}
@@ -770,6 +771,8 @@ sub _goto_link
 			return $self->_goto($step, $link);
 		}
 	}
+
+	!defined($linktext) && ($linktext = "");
 
 	$self->{error} = "No links found matching the text \"$linktext\"";
 	$self->_log_error("STEP$step: " . $self->{error});

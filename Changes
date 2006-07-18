@@ -1,5 +1,9 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.08	2006-07-18
+	
+	Fixed bug when using numbered input fields in xpaths.
+
 0.07	2006-05-25
 
 	Ignoring HTML comments during xpath parse.
