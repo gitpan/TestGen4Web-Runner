@@ -21,7 +21,7 @@ sub MY::postamble {
 publish-cpan: dist 
 	echo "Going to upload " `ls -1t *.tar.gz | head -1`
 	sleep 2
-	/usr/bin/cpan-upload -user mackers -mailto me@mackers.com -verbose `ls -1t *.tar.gz | head -1`
+	/usr/local/bin/cpan-upload -user mackers -mailto me@mackers.com -verbose `ls -1t *.tar.gz | head -1`
 
 debuild: META.yml dist
 	mkdir /tmp/debuild-testgen4web/
@@ -38,6 +38,10 @@ publish-debian: dist debuild
 	echo "Going to upload" `ls -1t debuild/*.changes | head -1`
 	sleep 2
 	/usr/bin/reprepro -Vb /var/www/hosts/apt.mackers.com/htdocs/ include unstable `ls -1t debuild/*.changes | head -1` 
+
+unpublish-debian:
+	/usr/bin/reprepro -Vb /var/www/hosts/apt.mackers.com/htdocs/ remove unstable libtestgen4web-runner-perl
+
 
 MAKE_FRAG
 }

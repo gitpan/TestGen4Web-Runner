@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 52 2006-07-18 20:54:17Z mackers $
+# $Id: Runner.pm 55 2008-11-19 18:27:52Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -58,7 +58,7 @@ use strict;
 use warnings;
 
 use vars qw( $VERSION );
-$VERSION = '0.08';
+$VERSION = '0.09';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -213,6 +213,7 @@ sub run
 
 	if (defined($self->{cookie_jar_file}))
 	{
+		$self->_log_debug("STEP$step: saving cookie jar to " . $self->{cookie_jar_file});
 		$self->{cookie_jar}->save($self->{cookie_jar_file});
 	}
 
@@ -418,7 +419,16 @@ sub _action_sink
 
 	if ($type eq 'goto')
 	{
-		return $self->_goto($step, $value);
+		if (defined($frame) && (!$self->{last_frame} || ($self->{last_frame} ne $frame)))
+		{
+			$self->_log_debug("STEP$step: going to search for frame \"$frame\"");
+
+			return $self->_goto_frame($step, $frame, $xpath, $value);
+		}
+		else
+		{
+			return $self->_goto($step, $value);
+		}
 	}
 	elsif ($type eq 'fill')
 	{
@@ -506,7 +516,7 @@ sub _action_sink
 
 			if (!($self->_goto_frame($step, $frame)))
 			{
-				$self->{error} = "Frame not found \"frame\" in step $step";
+				$self->{error} = "Frame not found \"$frame\" in step $step";
 				$self->_log_error("STEP$step: " . $self->{error});
 
 				return 0;
@@ -543,7 +553,7 @@ sub _action_sink
 				$formnum = $formname;
 			}
 
-			$retval = $self->_submit_form($step, $formnum);
+			$retval = $self->_submit_form($step, $formnum, $value);
 		}
 		else
 		{
@@ -782,10 +792,10 @@ sub _goto_link
 
 sub _goto_frame
 {
-	my ($self, $step, $framename) = @_;
+	my ($self, $step, $framename, $subst_from, $subst_to) = @_;
 	my @frames;
 
-	if (!(@frames = ($self->{action_state}->as_string() =~ m/<i?frame.*?name=["']?$framename["' ].*?<\/i?frame>/gism)))
+	if (!(@frames = ($self->{action_state}->as_string() =~ m/<i?frame\s.*?name=["']?$framename["' ].*?>/gism)))
 	{
 		$self->{error} = "No frames found in document";
 		$self->_log_error("STEP$step: " . $self->{error});
@@ -800,7 +810,15 @@ sub _goto_frame
 			$self->_log_debug("Found frame \"$framename\" with src = $1");
 			$self->{last_frame} = $framename;
 
-			return $self->_goto($step, $self->_make_absolute_url($1));
+			my $frame_url = $self->_make_absolute_url($1);
+
+			if ($subst_from && $subst_from ne "" && $subst_to && $subst_to ne "")
+			{
+				$frame_url =~ s/$subst_from/$subst_to/g;
+				$self->_log_debug("Substituting '$subst_from' in frame URL with '$subst_to' gives '$frame_url'");
+			}
+
+			return $self->_goto($step, $frame_url);
 		}
 	}
 
@@ -876,7 +894,7 @@ sub _get_form_position
 
 sub _submit_form
 {
-	my ($self, $step, $thisform) = @_;
+	my ($self, $step, $thisform, $action_override) = @_;
 	my @matches;
 
 	if ($thisform =~ m/\D/)
@@ -915,10 +933,17 @@ sub _submit_form
 		my $query_string = "";
 		my $req = HTTP::Request->new();
 
-		($formtag =~ m/action=["']?(.*?)["' >]/i) && ($action = $1);
 		($formtag =~ m/method=["']?(get|post)["' ]?/i) && ($method = uc($1));
 
-		$action = $self->_make_absolute_url($action);
+		if ($action_override && $action_override ne "" && $action_override =~ m/^http/)
+		{
+			$action = $action_override;
+		}
+		else
+		{
+			($formtag =~ m/action=["']?(.*?)["' >]/i) && ($action = $1);
+			$action = $self->_make_absolute_url($action);
+		}
 
 #$self->_log_debug("11111111 $formbody 11111111");
 
@@ -1065,7 +1090,7 @@ sub _log_error
 	}
 }
 
-sub _log_warning
+sub _log_warn
 {
 	my ($self, $msg) = @_;
 

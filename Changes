@@ -1,5 +1,12 @@
 Revision history for Perl extension TestGen4Web::Runner
 
+0.09	2008-11-19
+	
+	Added support for frame "goto".
+	Added support for frame "goto" with substitute.
+	Added support for form action override.
+	Fixed a _log_warn warning.
+
 0.08	2006-07-18
 	
 	Fixed bug when using numbered input fields in xpaths.
