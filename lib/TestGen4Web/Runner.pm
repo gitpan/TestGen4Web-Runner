@@ -1,5 +1,5 @@
 #
-# $Id: Runner.pm 55 2008-11-19 18:27:52Z mackers $
+# $Id: Runner.pm 57 2008-11-20 17:16:46Z mackers $
 
 package TestGen4Web::Runner;
 
@@ -58,7 +58,7 @@ use strict;
 use warnings;
 
 use vars qw( $VERSION );
-$VERSION = '0.09';
+$VERSION = '0.10';
 
 use XML::Simple qw(:strict);
 use Data::Dumper;
@@ -419,7 +419,7 @@ sub _action_sink
 
 	if ($type eq 'goto')
 	{
-		if (defined($frame) && (!$self->{last_frame} || ($self->{last_frame} ne $frame)))
+		if (defined($frame))
 		{
 			$self->_log_debug("STEP$step: going to search for frame \"$frame\"");
 
